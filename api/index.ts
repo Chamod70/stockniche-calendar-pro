@@ -9,31 +9,123 @@ const router = express.Router();
 
 app.use(express.json({ limit: '10mb' }));
 
-function getGenAIClient(): GoogleGenAI | null {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
+const FALLBACK_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+];
+
+function resolveApiKey(req?: express.Request): string | null {
+  const headerKey = req?.headers['x-gemini-api-key'];
+  const customKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
+  if (customKey && customKey.trim() && customKey !== 'MY_GEMINI_API_KEY') {
+    return customKey.trim();
+  }
+  const bodyKey = req?.body?.apiKey;
+  if (typeof bodyKey === 'string' && bodyKey.trim() && bodyKey !== 'MY_GEMINI_API_KEY') {
+    return bodyKey.trim();
+  }
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && envKey.trim() && envKey !== 'MY_GEMINI_API_KEY') {
+    return envKey.trim();
+  }
+  return null;
+}
+
+function getGenAIClient(req?: express.Request): GoogleGenAI | null {
+  const apiKey = resolveApiKey(req);
+  if (!apiKey) {
     return null;
   }
   return new GoogleGenAI({ apiKey });
 }
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+async function generateWithFallback(
+  ai: GoogleGenAI,
+  prompt: string,
+  temperature: number = 0.7,
+  jsonOutput: boolean = true
+): Promise<{ text: string; modelUsed: string }> {
+  const modelsToTry = process.env.GEMINI_MODEL
+    ? [process.env.GEMINI_MODEL, ...FALLBACK_MODELS.filter((m) => m !== process.env.GEMINI_MODEL)]
+    : FALLBACK_MODELS;
+
+  let lastError: any = null;
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: jsonOutput
+          ? {
+              responseMimeType: 'application/json',
+              temperature,
+            }
+          : {
+              temperature,
+            },
+      });
+      return { text: response.text || '', modelUsed: model };
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`Model ${model} failed, trying next fallback:`, err?.message || err);
+    }
+  }
+  throw lastError || new Error('All Gemini fallback models failed');
+}
 
 // API Health & Status
-router.get('/status', (_req, res) => {
-  const apiKey = process.env.GEMINI_API_KEY;
+router.get('/status', (req, res) => {
+  const apiKey = resolveApiKey(req);
   res.json({
     status: 'ok',
-    hasGeminiKey: Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY'),
+    hasGeminiKey: Boolean(apiKey),
     serverTime: new Date().toISOString(),
     version: '1.0.0',
   });
 });
 
+// Test Gemini API Connection & Latency
+router.post('/ai/test-connection', async (req, res) => {
+  const startTime = Date.now();
+  const apiKey = resolveApiKey(req);
+
+  if (!apiKey) {
+    return res.status(400).json({
+      ok: false,
+      error: 'API Key එකක් ලබා දී නොමැත. කරුණාකර වලංගු Gemini API Key එකක් ඇතුළත් කරන්න.',
+    });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const { modelUsed } = await generateWithFallback(
+      ai,
+      'Reply with the single word: OK',
+      0.1,
+      false
+    );
+    const latencyMs = Date.now() - startTime;
+    return res.json({
+      ok: true,
+      latencyMs,
+      modelUsed,
+      message: `Connected (${modelUsed}) in ${latencyMs}ms`,
+    });
+  } catch (err: any) {
+    const latencyMs = Date.now() - startTime;
+    return res.status(400).json({
+      ok: false,
+      latencyMs,
+      error: err?.message || 'API Key පරීක්ෂාව අසාර්ථක විය. කරුණාකර යතුර නැවත පරීක්ෂා කරන්න.',
+    });
+  }
+});
+
 // AI Niche Discovery Endpoint
 router.post('/ai/niche-discovery', async (req, res) => {
   const { eventName, date, category, country, assetTypes, userQuery } = req.body || {};
-  const ai = getGenAIClient();
+  const ai = getGenAIClient(req);
 
   if (ai) {
     try {
@@ -73,18 +165,9 @@ Return JSON with an array named "niches", where each niche contains:
 
 Only return valid JSON without markdown wrapping.`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.7,
-        },
-      });
-
-      const text = response.text || '{}';
-      const parsed = JSON.parse(text);
-      return res.json(parsed);
+      const { text, modelUsed } = await generateWithFallback(ai, prompt, 0.7, true);
+      const parsed = JSON.parse(text || '{}');
+      return res.json({ ...parsed, source: modelUsed });
     } catch (err: any) {
       console.warn('Gemini API call failed, falling back to algorithmic generator:', err?.message || err);
     }
@@ -97,7 +180,7 @@ Only return valid JSON without markdown wrapping.`;
 // AI Prompt Generator Endpoint
 router.post('/ai/generate-prompts', async (req, res) => {
   const { eventName, nicheName, concept, assetType, visualStyle, orientation } = req.body || {};
-  const ai = getGenAIClient();
+  const ai = getGenAIClient(req);
 
   if (ai) {
     try {
@@ -137,18 +220,9 @@ Return JSON with:
 
 Return ONLY valid JSON.`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.6,
-        },
-      });
-
-      const text = response.text || '{}';
-      const parsed = JSON.parse(text);
-      return res.json(parsed);
+      const { text, modelUsed } = await generateWithFallback(ai, prompt, 0.6, true);
+      const parsed = JSON.parse(text || '{}');
+      return res.json({ ...parsed, source: modelUsed });
     } catch (err: any) {
       console.warn('Gemini prompt generation failed, using fallback:', err?.message || err);
     }
@@ -167,7 +241,7 @@ Return ONLY valid JSON.`;
 // AI Keyword & Metadata Assistant Endpoint
 router.post('/ai/keywords', async (req, res) => {
   const { eventName, concept, assetType, targetCountry } = req.body || {};
-  const ai = getGenAIClient();
+  const ai = getGenAIClient(req);
 
   if (ai) {
     try {
@@ -207,18 +281,9 @@ Return JSON:
 
 Return ONLY valid JSON.`;
 
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.5,
-        },
-      });
-
-      const text = response.text || '{}';
-      const parsed = JSON.parse(text);
-      return res.json(parsed);
+      const { text, modelUsed } = await generateWithFallback(ai, prompt, 0.5, true);
+      const parsed = JSON.parse(text || '{}');
+      return res.json({ ...parsed, source: modelUsed });
     } catch (err: any) {
       console.warn('Gemini keywords failed, using fallback:', err?.message || err);
     }
@@ -552,4 +617,3 @@ function generateAlgorithmicKeywords(eventName: string, concept: string, assetTy
 }
 
 export default app;
-

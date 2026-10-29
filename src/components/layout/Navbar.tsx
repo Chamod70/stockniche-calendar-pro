@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -29,6 +30,7 @@ export const Navbar: React.FC = () => {
     calendarView,
     setCalendarView,
     hasGeminiKey,
+    setIsApiSidebarOpen,
     allResolvedEvents,
   } = useApp();
 
@@ -141,19 +143,20 @@ export const Navbar: React.FC = () => {
 
       {/* Right Controls */}
       <div className="flex items-center gap-2.5">
-        {/* Gemini Engine Badge */}
-        <div
-          title={hasGeminiKey ? 'Gemini 3.8 Flash API Active' : 'Algorithmic Stock Intelligence Ready'}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+        {/* Gemini API Settings Button */}
+        <button
+          onClick={() => setIsApiSidebarOpen(true)}
+          title="Open Gemini API Settings"
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer active:scale-95 ${
             hasGeminiKey
-              ? 'bg-emerald-950/60 border-emerald-700/50 text-emerald-300'
-              : 'bg-cyan-950/40 border-cyan-800/50 text-cyan-300'
+              ? 'bg-emerald-950/60 hover:bg-emerald-900/70 border-emerald-700/60 text-emerald-300'
+              : 'bg-amber-950/60 hover:bg-amber-900/70 border-amber-700/60 text-amber-300'
           }`}
         >
-          <span className={`w-2 h-2 rounded-full ${hasGeminiKey ? 'bg-emerald-400 animate-pulse' : 'bg-cyan-400'}`} />
-          <Cpu className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{hasGeminiKey ? 'Gemini AI Active' : 'Hybrid AI Ready'}</span>
-        </div>
+          <span className={`w-2 h-2 rounded-full ${hasGeminiKey ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+          <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+          <span className="hidden sm:inline">{hasGeminiKey ? 'API Key Ready' : 'API Settings'}</span>
+        </button>
 
         {/* Create Project Button */}
         <button

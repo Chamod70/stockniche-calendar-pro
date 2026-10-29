@@ -18,6 +18,7 @@ import { KeywordAssistant } from './components/keywords/KeywordAssistant';
 import { MyProjects } from './components/projects/MyProjects';
 import { ReportsAndExports } from './components/reports/ReportsAndExports';
 import { Settings } from './components/settings/Settings';
+import { ApiSettingsSidebar } from './components/settings/ApiSettingsSidebar';
 import { EventDetailModal } from './components/events/EventDetailModal';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
@@ -55,6 +56,9 @@ const MainContent: React.FC = () => {
 
       {/* Global Event Detail Modal */}
       <EventDetailModal />
+
+      {/* Gemini API Settings Slide-Over Sidebar */}
+      <ApiSettingsSidebar />
 
       {/* Toast Notification Container */}
       <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">

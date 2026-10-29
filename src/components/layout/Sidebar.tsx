@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Flame,
   BookmarkCheck,
+  KeyRound,
 } from 'lucide-react';
 import { useApp, NavigationTab } from '../../context/AppContext';
 
@@ -24,7 +25,15 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
-  const { activeTab, setActiveTab, projects, favoritePrompts, allResolvedEvents } = useApp();
+  const {
+    activeTab,
+    setActiveTab,
+    projects,
+    favoritePrompts,
+    allResolvedEvents,
+    setIsApiSidebarOpen,
+    hasGeminiKey,
+  } = useApp();
 
   const urgentOpportunitiesCount = allResolvedEvents.filter(
     (e) => e.daysRemaining >= 0 && e.daysRemaining <= 30
@@ -111,6 +120,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed })
             </button>
           );
         })}
+
+        {/* Direct Gemini API Key Drawer Trigger */}
+        <button
+          onClick={() => setIsApiSidebarOpen(true)}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-amber-300/90 hover:text-amber-200 hover:bg-amber-950/30 border border-transparent hover:border-amber-800/40 transition-all group relative cursor-pointer mt-1"
+        >
+          <KeyRound className="w-4 h-4 shrink-0 text-amber-400 transition-transform group-hover:scale-110" />
+          {!isCollapsed && (
+            <div className="flex items-center justify-between flex-1 overflow-hidden">
+              <span className="truncate font-semibold">Gemini API Key</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold border ${
+                  hasGeminiKey
+                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
+                    : 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                }`}
+              >
+                {hasGeminiKey ? 'Ready' : 'Setup'}
+              </span>
+            </div>
+          )}
+          {isCollapsed && (
+            <div className="absolute left-full ml-2 px-2.5 py-1 bg-slate-900 border border-slate-700 rounded-md text-xs text-white whitespace-nowrap shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+              Gemini API Settings
+            </div>
+          )}
+        </button>
       </div>
 
       {/* Footer Contributor Status Card */}

@@ -10,11 +10,12 @@ import {
   Trash2,
   RefreshCw,
   Info,
+  KeyRound,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const Settings: React.FC = () => {
-  const { hasGeminiKey, projects, favoritePrompts, showToast } = useApp();
+  const { hasGeminiKey, setIsApiSidebarOpen, projects, favoritePrompts, showToast } = useApp();
 
   const [defaultLeadWeeks, setDefaultLeadWeeks] = useState<number>(8);
   const [preferredAssetMedium, setPreferredAssetMedium] = useState<string>('Vector Illustration');
@@ -171,7 +172,15 @@ export const Settings: React.FC = () => {
               </span>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setIsApiSidebarOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                <span>Configure Gemini API Key</span>
+              </button>
+
               <button
                 onClick={handleClearData}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-950 border border-rose-800 text-rose-300 text-xs font-semibold transition-colors cursor-pointer"

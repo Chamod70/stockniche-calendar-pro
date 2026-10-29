@@ -19,7 +19,11 @@ import {
   getWeekdayName,
 } from '../utils/dateCalculations';
 import { calculateEventOpportunityScore } from '../utils/opportunityScoring';
-import { apiService } from '../services/apiService';
+import {
+  apiService,
+  getStoredGeminiApiKey,
+  setStoredGeminiApiKey,
+} from '../services/apiService';
 
 export type NavigationTab =
   | 'dashboard'
@@ -101,6 +105,14 @@ interface AppContextType {
   toasts: ToastInfo[];
   showToast: (message: string, type?: ToastInfo['type']) => void;
   hasGeminiKey: boolean;
+
+  // Gemini API Settings Sidebar
+  isApiSidebarOpen: boolean;
+  setIsApiSidebarOpen: (open: boolean) => void;
+  geminiApiKey: string;
+  saveGeminiApiKey: (key: string) => void;
+  removeGeminiApiKey: () => void;
+  restoreDefaultGeminiApiKey: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -187,14 +199,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentNiches, setCurrentNiches] = useState<StockNiche[]>([]);
   const [isDiscoveringNiches, setIsDiscoveringNiches] = useState<boolean>(false);
 
-  // Toasts
+  // Toasts & Gemini API Key state
   const [toasts, setToasts] = useState<ToastInfo[]>([]);
-  const [hasGeminiKey, setHasGeminiKey] = useState<boolean>(false);
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => getStoredGeminiApiKey());
+  const [serverHasGeminiKey, setServerHasGeminiKey] = useState<boolean>(false);
+  const [isApiSidebarOpen, setIsApiSidebarOpen] = useState<boolean>(false);
+
+  const hasGeminiKey = Boolean(geminiApiKey.trim() || serverHasGeminiKey);
 
   // Check backend Gemini API status on mount
   useEffect(() => {
     apiService.getStatus().then((status) => {
-      setHasGeminiKey(status.hasGeminiKey);
+      setServerHasGeminiKey(status.hasGeminiKey);
     });
   }, []);
 
@@ -223,6 +239,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
   }, []);
+
+  const saveGeminiApiKey = useCallback(
+    (key: string) => {
+      const cleaned = key.trim();
+      setStoredGeminiApiKey(cleaned);
+      setGeminiApiKey(cleaned);
+      if (cleaned) {
+        showToast('Gemini API Key සාර්ථකව සුරකින ලදී! (Saved to browser)', 'success');
+      } else {
+        showToast('Gemini API Key ඉවත් කරන ලදී', 'info');
+      }
+    },
+    [showToast]
+  );
+
+  const removeGeminiApiKey = useCallback(() => {
+    setStoredGeminiApiKey('');
+    setGeminiApiKey('');
+    showToast('Gemini API Key ඉවත් කරන ලදී (Removed)', 'info');
+  }, [showToast]);
+
+  const restoreDefaultGeminiApiKey = useCallback(() => {
+    setStoredGeminiApiKey('');
+    setGeminiApiKey('');
+    apiService.getStatus().then((status) => {
+      setServerHasGeminiKey(status.hasGeminiKey);
+    });
+    showToast('Default Working Engine වෙත නැවත සකසන ලදී!', 'success');
+  }, [showToast]);
 
   // Compute resolved events dynamically for currentYear
   const allResolvedEvents = useMemo<ResolvedEvent[]>(() => {
@@ -516,6 +561,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toasts,
         showToast,
         hasGeminiKey,
+
+        isApiSidebarOpen,
+        setIsApiSidebarOpen,
+        geminiApiKey,
+        saveGeminiApiKey,
+        removeGeminiApiKey,
+        restoreDefaultGeminiApiKey,
       }}
     >
       {children}

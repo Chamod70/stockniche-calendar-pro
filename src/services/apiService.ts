@@ -1,4 +1,44 @@
+import { GoogleGenAI } from '@google/genai';
 import { StockNiche, StockPrompt, KeywordMetadata, AssetType } from '../types';
+
+export const GEMINI_API_KEY_STORAGE = 'stockniche_pro_gemini_api_key_v1';
+
+const FALLBACK_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+];
+
+export function getStoredGeminiApiKey(): string {
+  try {
+    return localStorage.getItem(GEMINI_API_KEY_STORAGE) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function setStoredGeminiApiKey(key: string): void {
+  try {
+    if (key.trim()) {
+      localStorage.setItem(GEMINI_API_KEY_STORAGE, key.trim());
+    } else {
+      localStorage.removeItem(GEMINI_API_KEY_STORAGE);
+    }
+  } catch (e) {
+    console.error('Failed to save API key to localStorage', e);
+  }
+}
+
+function getAuthHeaders(overrideKey?: string): Record<string, string> {
+  const key = (overrideKey !== undefined ? overrideKey : getStoredGeminiApiKey()).trim();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (key) {
+    headers['x-gemini-api-key'] = key;
+  }
+  return headers;
+}
 
 export interface NicheDiscoveryRequest {
   eventName: string;
@@ -25,14 +65,100 @@ export interface KeywordRequest {
   targetCountry?: string;
 }
 
+export interface ConnectionTestResult {
+  ok: boolean;
+  latencyMs: number;
+  modelUsed?: string;
+  message?: string;
+  error?: string;
+}
+
 export const apiService = {
   async getStatus(): Promise<{ status: string; hasGeminiKey: boolean; serverTime: string }> {
+    const localKey = getStoredGeminiApiKey();
     try {
-      const res = await fetch('/api/status');
+      const res = await fetch('/api/status', {
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      const data = await res.json();
+      return {
+        ...data,
+        hasGeminiKey: Boolean(data.hasGeminiKey || localKey),
+      };
     } catch {
-      return { status: 'fallback', hasGeminiKey: false, serverTime: new Date().toISOString() };
+      return {
+        status: 'fallback',
+        hasGeminiKey: Boolean(localKey),
+        serverTime: new Date().toISOString(),
+      };
+    }
+  },
+
+  async testConnection(keyToTest?: string): Promise<ConnectionTestResult> {
+    const startTime = Date.now();
+    const activeKey = (keyToTest !== undefined ? keyToTest : getStoredGeminiApiKey()).trim();
+
+    // Try backend endpoint first
+    try {
+      const res = await fetch('/api/ai/test-connection', {
+        method: 'POST',
+        headers: getAuthHeaders(activeKey),
+        body: JSON.stringify({ apiKey: activeKey }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        return data;
+      }
+      // If backend returned a specific validation error and we didn't get a 404/502, return it
+      if (res.status === 400 && data.error && activeKey) {
+        // Still try direct client SDK in case serverless env had an issue
+      } else if (!activeKey) {
+        return {
+          ok: false,
+          latencyMs: Date.now() - startTime,
+          error: data.error || 'API Key එකක් ලබා දී නොමැත. කරුණාකර Gemini API Key එකක් ඇතුළත් කරන්න.',
+        };
+      }
+    } catch {
+      // Fallback to direct browser SDK test below
+    }
+
+    if (!activeKey) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startTime,
+        error: 'API Key එකක් ලබා දී නොමැත. කරුණාකර Gemini API Key එකක් ඇතුළත් කරන්න.',
+      };
+    }
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: activeKey });
+      let lastErr: any = null;
+      for (const model of FALLBACK_MODELS) {
+        try {
+          await ai.models.generateContent({
+            model,
+            contents: 'Reply with OK',
+          });
+          const latencyMs = Date.now() - startTime;
+          return {
+            ok: true,
+            latencyMs,
+            modelUsed: model,
+            message: `Connected (${model}) in ${latencyMs}ms`,
+          };
+        } catch (err: any) {
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error('Connection failed');
+    } catch (err: any) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startTime,
+        error: err?.message || 'API Key පරීක්ෂාව අසාර්ථක විය. කරුණාකර යතුර නැවත පරීක්ෂා කරන්න.',
+      };
     }
   },
 
@@ -40,7 +166,7 @@ export const apiService = {
     try {
       const res = await fetch('/api/ai/niche-discovery', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(req),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -61,7 +187,7 @@ export const apiService = {
     try {
       const res = await fetch('/api/ai/generate-prompts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(req),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -84,7 +210,7 @@ export const apiService = {
     try {
       const res = await fetch('/api/ai/keywords', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(req),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
