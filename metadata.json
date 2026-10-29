@@ -1,0 +1,6 @@
+{
+  "name": "StockNiche Calendar Pro",
+  "description": "Intelligent calendar, event discovery, seasonal trend research, and commercial stock-content planning platform designed specifically for Adobe Stock contributors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
